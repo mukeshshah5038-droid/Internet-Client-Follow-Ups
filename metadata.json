@@ -1,0 +1,6 @@
+{
+  "name": "ConnectFlow Sales Pro",
+  "description": "A powerful follow-up and reminder dashboard for internet provider sales representatives to manage appointments, locations, and customer relationships efficiently.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}

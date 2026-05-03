@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitives ---
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(data) {
+      return data.salesRepId == request.auth.uid;
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['name', 'phone', 'address', 'status', 'salesRepId', 'createdAt']) &&
+             data.keys().size() <= 8 && 
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 7 && data.phone.size() <= 20 &&
+             data.address is string && data.address.size() > 0 && data.address.size() <= 200 &&
+             data.status in ['lead', 'contacted', 'appointment_scheduled', 'won', 'lost'] &&
+             data.salesRepId == request.auth.uid &&
+             data.createdAt == request.time &&
+             (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 100)) &&
+             (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['customerId', 'dateTime', 'status', 'salesRepId']) &&
+             data.keys().size() <= 12 && 
+             data.customerId is string && 
+             data.dateTime is timestamp &&
+             data.status in ['scheduled', 'completed', 'cancelled', 'no_show'] &&
+             data.salesRepId == request.auth.uid &&
+             (!data.keys().hasAny(['customerName']) || (data.customerName is string)) &&
+             (!data.keys().hasAny(['location']) || (data.location is string && data.location.size() <= 200)) &&
+             (!data.keys().hasAny(['internetSpeed']) || (data.internetSpeed is string && data.internetSpeed.size() <= 100)) &&
+             (!data.keys().hasAny(['hasIPTV']) || (data.hasIPTV is bool)) &&
+             (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is timestamp)) &&
+             (!data.keys().hasAny(['lastReminderSent']) || (data.lastReminderSent is timestamp)) &&
+             (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidFollowUp(data) {
+      return data.keys().hasAll(['customerId', 'dueDateTime', 'task', 'status', 'salesRepId']) &&
+             data.keys().size() <= 8 && 
+             data.customerId is string && 
+             data.dueDateTime is timestamp &&
+             data.task is string && data.task.size() > 0 && data.task.size() <= 1000 &&
+             data.status in ['pending', 'completed'] &&
+             data.salesRepId == request.auth.uid &&
+             (!data.keys().hasAny(['customerName']) || (data.customerName is string)) &&
+             (!data.keys().hasAny(['appointmentId']) || (data.appointmentId is string));
+    }
+
+    // --- Collections ---
+
+    match /customers/{customerId} {
+      allow get: if isSignedIn() && isOwner(existing());
+      allow list: if isSignedIn() && existing().salesRepId == request.auth.uid;
+      allow create: if isSignedIn() && isValidCustomer(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) &&
+                       incoming().salesRepId == existing().salesRepId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action: Update basic info
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'address', 'email', 'notes', 'status']))
+                       );
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    match /appointments/{appointmentId} {
+      allow get: if isSignedIn() && isOwner(existing());
+      allow list: if isSignedIn() && existing().salesRepId == request.auth.uid;
+      allow create: if isSignedIn() && isValidAppointment(incoming()) &&
+                       exists(/databases/$(database)/documents/customers/$(incoming().customerId));
+      allow update: if isSignedIn() && isOwner(existing()) &&
+                       isValidAppointment(incoming()) &&
+                       incoming().salesRepId == existing().salesRepId &&
+                       incoming().customerId == existing().customerId &&
+                       (
+                         // Action: Reschedule
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['dateTime', 'location', 'notes', 'customerName', 'internetSpeed', 'hasIPTV', 'updatedAt', 'lastReminderSent'])) ||
+                         // Action: Change status
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'lastReminderSent']))
+                       );
+      allow delete: if isSignedIn() && isOwner(existing()) && existing().status == 'cancelled';
+    }
+
+    match /follow-ups/{followUpId} {
+      allow get: if isSignedIn() && isOwner(existing());
+      allow list: if isSignedIn() && existing().salesRepId == request.auth.uid;
+      allow create: if isSignedIn() && isValidFollowUp(incoming()) &&
+                       exists(/databases/$(database)/documents/customers/$(incoming().customerId));
+      allow update: if isSignedIn() && isOwner(existing()) &&
+                       incoming().salesRepId == existing().salesRepId &&
+                       incoming().customerId == existing().customerId &&
+                       (
+                         // Action: Toggle status
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+                         // Action: Edit task
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['task', 'dueDateTime', 'customerName']))
+                       );
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+  }
+}

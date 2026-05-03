@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "Information about a potential or existing customer.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the customer" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "email": { "type": "string", "description": "Email address" },
+        "address": { "type": "string", "description": "Service location address" },
+        "status": { "type": "string", "enum": ["lead", "contacted", "appointment_scheduled", "won", "lost"], "description": "Current sales status" },
+        "notes": { "type": "string", "description": "General notes about the customer" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the lead was created" },
+        "salesRepId": { "type": "string", "description": "The UID of the sales rep owner" }
+      },
+      "required": ["name", "phone", "address", "status", "salesRepId"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "A scheduled meeting with a customer.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "description": "References a Customer entity" },
+        "customerName": { "type": "string", "description": "Denormalized name for display" },
+        "dateTime": { "type": "string", "format": "date-time", "description": "When the appointment starts" },
+        "location": { "type": "string", "description": "Specific location for the meeting" },
+        "internetSpeed": { "type": "string", "description": "Planned or discussed internet speed (e.g., 100Mbps)" },
+        "hasIPTV": { "type": "boolean", "description": "Whether IPTV service is included in the discussion" },
+        "notes": { "type": "string", "description": "Preparation or meeting notes" },
+        "status": { "type": "string", "enum": ["scheduled", "completed", "cancelled", "no_show"], "description": "Status of the appointment" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the appointment was last modified" },
+        "lastReminderSent": { "type": "string", "format": "date-time", "description": "Timestamp of the last sent reminder" },
+        "salesRepId": { "type": "string", "description": "The UID of the sales rep owner" }
+      },
+      "required": ["customerId", "dateTime", "status", "salesRepId"]
+    },
+    "FollowUp": {
+      "title": "FollowUp",
+      "description": "A task or reminder to follow up with a customer.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "description": "References a Customer entity" },
+        "appointmentId": { "type": "string", "description": "Optional reference to a past appointment" },
+        "dueDateTime": { "type": "string", "format": "date-time", "description": "When the follow-up is due" },
+        "task": { "type": "string", "description": "What needs to be done" },
+        "status": { "type": "string", "enum": ["pending", "completed"], "description": "Status of the follow-up" },
+        "salesRepId": { "type": "string", "description": "The UID of the sales rep owner" }
+      },
+      "required": ["customerId", "dueDateTime", "task", "status", "salesRepId"]
+    }
+  },
+  "firestore": {
+    "customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Collection of leads and customers."
+    },
+    "appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Collection of scheduled sales appointments."
+    },
+    "follow-ups/{followUpId}": {
+      "schema": "FollowUp",
+      "description": "Collection of pending follow-up tasks."
+    }
+  }
+}
